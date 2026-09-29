@@ -5,6 +5,7 @@ import { pool } from "./db.js";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./security/password.js";
 import { buildOtpAuthUri, decryptTotpSecret, encryptTotpSecret, generateTotpSecret, verifyTotpCode } from "./security/totp.js";
+import { sensitiveRateLimit } from "./security/rate-limit.js";
 
 const credentials = z.object({ companyId: z.string().uuid(), email: z.string().email().transform(v => v.toLowerCase()), password: z.string().min(8).max(128) });
 const mfaLogin = z.object({ challengeToken: z.string().min(1), code: z.string().regex(/^\d{6}$/) });
@@ -43,7 +44,7 @@ async function requireAuth(request: FastifyRequest) {
 const hashToken = (v:string) => createHash("sha256").update(v).digest("hex");
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  app.post("/api/v1/auth/login", async (request, reply) => {
+  app.post("/api/v1/auth/login", { preHandler: sensitiveRateLimit("login", 10, 15 * 60 * 1000) }, async (request, reply) => {
     const input=credentials.parse(request.body);
     const r=await pool.query("SELECT id,company_id,email,password_hash,status,mfa_enabled FROM users WHERE company_id=$1 AND email=$2 LIMIT 1",[input.companyId,input.email]);
     const u=r.rows[0];
@@ -52,7 +53,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     return {mfaRequired:false,...await issueSession(app,{id:String(u.id),companyId:String(u.company_id),email:String(u.email)},request)};
   });
 
-  app.post("/api/v1/auth/mfa/login", async (request, reply) => {
+  app.post("/api/v1/auth/mfa/login", { preHandler: sensitiveRateLimit("mfa-login", 10, 15 * 60 * 1000) }, async (request, reply) => {
     const input=mfaLogin.parse(request.body);
     let p:{sub?:string;companyId?:string;purpose?:string};
     try { p=await app.jwt.verify(input.challengeToken); } catch { return reply.code(401).send({error:{code:"INVALID_MFA_CHALLENGE",message:"Invalid or expired MFA challenge"}}); }
@@ -70,7 +71,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   app.get("/api/v1/auth/sessions", async (request,reply) => { try { const u=await requireAuth(request); const r=await pool.query("SELECT id,device_name,user_agent,ip_address,created_at,last_seen_at,expires_at FROM auth_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>NOW() ORDER BY last_seen_at DESC",[u.id]); return {sessions:r.rows}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
   app.delete("/api/v1/auth/sessions/:sessionId", async (request,reply) => { try { const u=await requireAuth(request); const p=z.object({sessionId:z.string().uuid()}).parse(request.params); const r=await pool.query("UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL",[p.sessionId,u.id]); if(r.rowCount!==1)return reply.code(404).send({error:{code:"SESSION_NOT_FOUND",message:"Session not found"}}); return {success:true}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
 
-  app.post("/api/v1/auth/password/forgot", async request => {
+  app.post("/api/v1/auth/password/forgot", { preHandler: sensitiveRateLimit("password-forgot", 5, 15 * 60 * 1000) }, async request => {
     const input=forgot.parse(request.body);
     const r=await pool.query("SELECT id FROM users WHERE company_id=$1 AND email=$2 AND status='active' LIMIT 1",[input.companyId,input.email]);
     let resetToken:string|undefined;
@@ -80,7 +81,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     return response;
   });
 
-  app.post("/api/v1/auth/password/reset", async (request,reply) => {
+  app.post("/api/v1/auth/password/reset", { preHandler: sensitiveRateLimit("password-reset", 10, 15 * 60 * 1000) }, async (request,reply) => {
     const input=reset.parse(request.body); const client=await pool.connect();
     try { await client.query("BEGIN"); const r=await client.query("SELECT id,user_id FROM password_reset_tokens WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE",[hashToken(input.token)]); if(r.rowCount!==1){await client.query("ROLLBACK");return reply.code(400).send({error:{code:"INVALID_RESET_TOKEN",message:"Invalid or expired reset token"}});} const h=await hashPassword(input.password); await client.query("UPDATE users SET password_hash=$1,updated_at=NOW() WHERE id=$2",[h,r.rows[0].user_id]); await client.query("UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1",[r.rows[0].id]); await client.query("UPDATE auth_sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL",[r.rows[0].user_id]); await client.query("COMMIT"); return {success:true}; } catch(e){await client.query("ROLLBACK");throw e;} finally{client.release();}
   });
