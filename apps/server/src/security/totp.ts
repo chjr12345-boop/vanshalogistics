@@ -9,11 +9,24 @@ function encryptionKey(): Buffer {
   return createHmac("sha256", config.JWT_SECRET).update("vansha-auth-mfa-encryption-key").digest();
 }
 
+function base32Encode(value: Buffer): string {
+  let output = "";
+  let buffer = 0;
+  let bits = 0;
+  for (const byte of value) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      output += ALPHABET[(buffer >> bits) & 31];
+    }
+  }
+  if (bits > 0) output += ALPHABET[(buffer << (5 - bits)) & 31];
+  return output;
+}
+
 export function generateTotpSecret(): string {
-  let value = "";
-  const bytes = randomBytes(20);
-  for (const byte of bytes) value += ALPHABET[byte & 31];
-  return value;
+  return base32Encode(randomBytes(20));
 }
 
 function base32Decode(value: string): Buffer {
