@@ -14,8 +14,14 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
   await app.register(jwt, {
     secret: config.JWT_SECRET,
-    issuer: config.JWT_ISSUER,
-    audience: config.JWT_AUDIENCE
+    sign: {
+      iss: config.JWT_ISSUER,
+      aud: config.JWT_AUDIENCE
+    },
+    verify: {
+      allowedIss: config.JWT_ISSUER,
+      allowedAud: config.JWT_AUDIENCE
+    }
   });
 
   app.get("/api/v1/health", async () => ({
@@ -32,12 +38,24 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   app.setErrorHandler(async (error, _request, reply) => {
     app.log.error(error);
-    return reply.code(error.statusCode ?? 500).send({
+    const statusCode =
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number"
+        ? error.statusCode
+        : 500;
+    const message =
+      config.NODE_ENV === "production"
+        ? "An unexpected error occurred."
+        : error instanceof Error
+          ? error.message
+          : "An unexpected error occurred.";
+
+    return reply.code(statusCode).send({
       error: {
         code: "INTERNAL_ERROR",
-        message: config.NODE_ENV === "production"
-          ? "An unexpected error occurred."
-          : error.message
+        message
       }
     });
   });
