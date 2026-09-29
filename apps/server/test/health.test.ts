@@ -1,3 +1,9 @@
+process.env.NODE_ENV = "test";
+process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/vansha_test";
+process.env.JWT_ISSUER = "vansha-logistic-hub-test";
+process.env.JWT_AUDIENCE = "vansha-logistic-hub-test";
+process.env.JWT_SECRET = "test-only-secret-with-at-least-32-characters";
+
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "../src/app.js";
