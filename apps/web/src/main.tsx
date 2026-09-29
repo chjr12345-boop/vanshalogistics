@@ -1,4 +1,5 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useState, type FormEvent } from "react";
+import { createRoot } from "react-dom/client";
 import "./index.css";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
@@ -25,7 +26,7 @@ function Login({onLogin}:{onLogin:(user:User)=>void}) {
   const [companyId,setCompanyId]=useState(""); const [email,setEmail]=useState(""); const [password,setPassword]=useState("");
   const [challenge,setChallenge]=useState(""); const [code,setCode]=useState(""); const [loading,setLoading]=useState(false); const [error,setError]=useState("");
   const [forgot,setForgot]=useState(false); const [resetToken,setResetToken]=useState(""); const [newPassword,setNewPassword]=useState("");
-  async function submit(e:React.FormEvent){e.preventDefault();setLoading(true);setError("");try{
+  async function submit(e:FormEvent){e.preventDefault();setLoading(true);setError("");try{
     if(forgot){const r=await api("/auth/password/forgot",{method:"POST",body:JSON.stringify({companyId,email})});if(r.resetToken){setResetToken(r.resetToken);setForgot(false);setError("Development reset token generated. Use it below.");}else setError("If the account exists, reset instructions have been requested.");return;}
     if(challenge){const r=await api("/auth/mfa/login",{method:"POST",body:JSON.stringify({challengeToken:challenge,code})});sessionStorage.setItem(TOKEN_KEY,r.accessToken);onLogin(r.user);return;}
     const r=await api("/auth/login",{method:"POST",body:JSON.stringify({companyId,email,password})});if(r.mfaRequired){setChallenge(r.challengeToken);return;}sessionStorage.setItem(TOKEN_KEY,r.accessToken);onLogin(r.user);
