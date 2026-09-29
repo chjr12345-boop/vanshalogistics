@@ -3,16 +3,13 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
-const TOKEN_KEY = "vansha_access_token";
 type User = { id:string; companyId:string; email:string; mfaEnabled:boolean; roles:string[] };
 type Session = { id:string; device_name:string|null; ip_address:string|null; last_seen_at:string };
 
 async function api(path:string, options:RequestInit = {}) {
-  const token = sessionStorage.getItem(TOKEN_KEY);
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("content-type")) headers.set("content-type","application/json");
-  if (token) headers.set("authorization", "Bearer " + token);
-  const response = await fetch(API + path, {...options, headers});
+  const response = await fetch(API + path, {...options, credentials:"include", headers});
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error?.message ?? "Request failed");
   return data;
@@ -28,8 +25,8 @@ function Login({onLogin}:{onLogin:(user:User)=>void}) {
   const [forgot,setForgot]=useState(false); const [resetToken,setResetToken]=useState(""); const [newPassword,setNewPassword]=useState("");
   async function submit(e:FormEvent){e.preventDefault();setLoading(true);setError("");try{
     if(forgot){const r=await api("/auth/password/forgot",{method:"POST",body:JSON.stringify({companyId,email})});if(r.resetToken){setResetToken(r.resetToken);setForgot(false);setError("Development reset token generated. Use it below.");}else setError("If the account exists, reset instructions have been requested.");return;}
-    if(challenge){const r=await api("/auth/mfa/login",{method:"POST",body:JSON.stringify({challengeToken:challenge,code})});sessionStorage.setItem(TOKEN_KEY,r.accessToken);onLogin(r.user);return;}
-    const r=await api("/auth/login",{method:"POST",body:JSON.stringify({companyId,email,password})});if(r.mfaRequired){setChallenge(r.challengeToken);return;}sessionStorage.setItem(TOKEN_KEY,r.accessToken);onLogin(r.user);
+    if(challenge){const r=await api("/auth/mfa/login",{method:"POST",body:JSON.stringify({challengeToken:challenge,code})});onLogin(r.user);return;}
+    const r=await api("/auth/login",{method:"POST",body:JSON.stringify({companyId,email,password})});if(r.mfaRequired){setChallenge(r.challengeToken);return;}onLogin(r.user);
   }catch(err){setError(err instanceof Error?err.message:"Unable to sign in");}finally{setLoading(false);}}
   async function reset(){setLoading(true);setError("");try{await api("/auth/password/reset",{method:"POST",body:JSON.stringify({token:resetToken,password:newPassword})});setError("Password reset successfully. You can sign in now.");setResetToken("");setNewPassword("");}catch(err){setError(err instanceof Error?err.message:"Reset failed");}finally{setLoading(false);}}
   return <div className="auth-page"><section className="brand-panel"><div className="brand-mark">VLH</div><h1>Vansha Logistic Hub</h1><p>Secure operations platform for bulk transportation, fleet and trip management.</p><div className="feature-list"><span>✓ Secure authentication</span><span>✓ Role-based access</span><span>✓ Multi-tenant ready</span></div></section>
@@ -57,6 +54,6 @@ function Dashboard({user,onLogout}:{user:User;onLogout:()=>void}) {
     </main></div>;
 }
 
-function App(){const [user,setUser]=useState<User|null>(null);const [checking,setChecking]=useState(true);useEffect(()=>{if(sessionStorage.getItem(TOKEN_KEY)){api("/auth/me").then(r=>setUser(r.user)).catch(()=>sessionStorage.removeItem(TOKEN_KEY)).finally(()=>setChecking(false))}else setChecking(false)},[]);if(checking)return <div className="loading">Loading secure workspace…</div>;return user?<Dashboard user={user} onLogout={()=>{sessionStorage.removeItem(TOKEN_KEY);setUser(null)}}/>:<Login onLogin={setUser}/>}
+function App(){const [user,setUser]=useState<User|null>(null);const [checking,setChecking]=useState(true);useEffect(()=>{api("/auth/me").then(r=>setUser(r.user)).catch(()=>setUser(null)).finally(()=>setChecking(false))},[]);if(checking)return <div className="loading">Loading secure workspace…</div>;return user?<Dashboard user={user} onLogout={()=>setUser(null)}/>:<Login onLogin={setUser}/>}
 
 createRoot(document.getElementById("root")!).render(<StrictMode><App/></StrictMode>);
