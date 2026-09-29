@@ -2,19 +2,19 @@
   "name": "vansha-logistic-hub",
   "private": true,
   "version": "0.1.0",
-  "description": "Vansha Logistic Hub foundation",
-  "packageManager": "npm@11",
+  "description": "Vansha Logistic Hub - production foundation",
+  "workspaces": ["apps/web", "apps/server"],
   "scripts": {
     "build": "npm run build:web && npm run build:server",
-    "build:web": "npm --prefix apps/web run build",
-    "build:server": "npm --prefix apps/server run build",
+    "build:web": "npm --workspace @vansha/web run build",
+    "build:server": "npm --workspace @vansha/server run build",
     "lint": "npm run lint:web && npm run lint:server",
-    "lint:web": "npm --prefix apps/web run lint",
-    "lint:server": "npm --prefix apps/server run lint",
+    "lint:web": "npm --workspace @vansha/web run lint",
+    "lint:server": "npm --workspace @vansha/server run lint",
     "typecheck": "npm run typecheck:web && npm run typecheck:server",
-    "typecheck:web": "npm --prefix apps/web run typecheck",
-    "typecheck:server": "npm --prefix apps/server run typecheck",
+    "typecheck:web": "npm --workspace @vansha/web run typecheck",
+    "typecheck:server": "npm --workspace @vansha/server run typecheck",
     "test": "npm run test:server",
-    "test:server": "npm --prefix apps/server run test"
+    "test:server": "npm --workspace @vansha/server run test"
   }
 }
