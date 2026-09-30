@@ -5,6 +5,7 @@ import jwt from "@fastify/jwt";
 import { ZodError } from "zod";
 import { config } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
+import { registerCompanySetupRoutes } from "./company-setup.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ logger: config.NODE_ENV !== "test" });
@@ -17,6 +18,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await registerAuthRoutes(app);
+  await registerCompanySetupRoutes(app);
 
   app.get("/api/v1/health", async () => ({
     status: "ok",
