@@ -78,3 +78,17 @@ test("company setup registration is rate limited", async () => {
   await app.close();
   clearRateLimitStateForTests();
 });
+
+
+test("company user role update rejects a user from another company", async () => {
+  setup();
+  const { buildApp } = await import("../src/app.js");
+  const app = await buildApp();
+  const response = await app.inject({
+    method: "PATCH",
+    url: "/api/v1/company/users/not-a-user",
+    payload: { roleId: "00000000-0000-0000-0000-000000000001" }
+  });
+  assert.equal(response.statusCode, 401);
+  await app.close();
+});
