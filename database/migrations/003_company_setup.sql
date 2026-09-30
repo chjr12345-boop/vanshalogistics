@@ -18,7 +18,8 @@ ALTER TABLE companies
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS display_name TEXT,
-  ADD COLUMN IF NOT EXISTS phone TEXT;
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS branches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,6 +48,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_one_head_office_per_company
   WHERE is_head_office = TRUE AND status = 'active';
 
 CREATE INDEX IF NOT EXISTS idx_branches_company_id ON branches(company_id);
+CREATE INDEX IF NOT EXISTS idx_users_branch_id ON users(branch_id);
 
 CREATE TABLE IF NOT EXISTS company_settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
