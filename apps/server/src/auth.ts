@@ -13,6 +13,34 @@ const forgot = z.object({ companyId: z.string().uuid(), email: z.string().email(
 const reset = z.object({ token: z.string().min(32), password: z.string().min(8).max(128) });
 const mfaCode = z.object({ code: z.string().regex(/^\d{6}$/) });
 
+const ACCESS_COOKIE = config.NODE_ENV === "production" ? "__Host-vansha_access_token" : "vansha_access_token";
+
+function setAccessCookie(reply: any, token: string) {
+  const secure = config.NODE_ENV === "production" ? "; Secure" : "";
+  reply.header(
+    "Set-Cookie",
+    `${ACCESS_COOKIE}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=28800${secure}`
+  );
+}
+
+function clearAccessCookie(reply: any) {
+  const secure = config.NODE_ENV === "production" ? "; Secure" : "";
+  reply.header(
+    "Set-Cookie",
+    `${ACCESS_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`
+  );
+}
+
+function readCookie(request: FastifyRequest): string | null {
+  const header = request.headers.cookie;
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const [name, ...valueParts] = part.trim().split("=");
+    if (name === ACCESS_COOKIE) return decodeURIComponent(valueParts.join("="));
+  }
+  return null;
+}
+
 async function roles(userId: string): Promise<string[]> {
   const r = await pool.query("SELECT r.name FROM roles r JOIN user_roles ur ON ur.role_id=r.id WHERE ur.user_id=$1 ORDER BY r.name", [userId]);
   return r.rows.map(x => String(x.name));
@@ -68,11 +96,13 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     if(!u?.mfa_enabled||!u.mfa_secret_encrypted) return reply.code(401).send({error:{code:"MFA_NOT_CONFIGURED",message:"MFA is not configured"}});
     let valid=false; try { valid=verifyTotpCode(decryptTotpSecret(String(u.mfa_secret_encrypted)),input.code); } catch {}
     if(!valid) return reply.code(401).send({error:{code:"INVALID_MFA_CODE",message:"Invalid MFA code"}});
-    return issueSession(app,{id:String(u.id),companyId:String(u.company_id),email:String(u.email)},request);
+    const session = await issueSession(app,{id:String(u.id),companyId:String(u.company_id),email:String(u.email)},request);
+    setAccessCookie(reply, session.accessToken);
+    return { expiresAt: session.expiresAt, user: session.user };
   });
 
   app.get("/api/v1/auth/me", async (request,reply) => { try { const u=await requireAuth(app, request); return {user:{id:u.id,companyId:u.companyId,email:u.email,mfaEnabled:u.mfaEnabled,roles:await roles(u.id)}}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
-  app.post("/api/v1/auth/logout", async (request,reply) => { try { const u=await requireAuth(app, request); await pool.query("UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2",[u.sessionId,u.id]); return {success:true}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
+  app.post("/api/v1/auth/logout", async (request,reply) => { try { const u=await requireAuth(app, request); await pool.query("UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2",[u.sessionId,u.id]); clearAccessCookie(reply); return {success:true}; } catch { clearAccessCookie(reply); return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
   app.get("/api/v1/auth/sessions", async (request,reply) => { try { const u=await requireAuth(app, request); const r=await pool.query("SELECT id,device_name,user_agent,ip_address,created_at,last_seen_at,expires_at FROM auth_sessions WHERE user_id=$1 AND revoked_at IS NULL AND expires_at>NOW() ORDER BY last_seen_at DESC",[u.id]); return {sessions:r.rows}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
   app.delete("/api/v1/auth/sessions/:sessionId", async (request,reply) => { try { const u=await requireAuth(app, request); const p=z.object({sessionId:z.string().uuid()}).parse(request.params); const r=await pool.query("UPDATE auth_sessions SET revoked_at=NOW() WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL",[p.sessionId,u.id]); if(r.rowCount!==1)return reply.code(404).send({error:{code:"SESSION_NOT_FOUND",message:"Session not found"}}); return {success:true}; } catch { return reply.code(401).send({error:{code:"UNAUTHENTICATED",message:"Authentication required"}}); }});
 
