@@ -18,6 +18,18 @@ type AuthContext = {
   roles: string[];
 };
 
+function assertSameOrigin(request: FastifyRequest) {
+  const unsafe = !["GET", "HEAD", "OPTIONS"].includes(request.method);
+  const origin = request.headers.origin;
+
+  if (unsafe && origin && origin !== config.CORS_ORIGIN) {
+    throw Object.assign(new Error("Cross-site request blocked"), {
+      statusCode: 403,
+      code: "CSRF_ORIGIN_REJECTED"
+    });
+  }
+}
+
 function readCookie(request: FastifyRequest): string | null {
   const header = request.headers.cookie;
   if (!header) return null;
@@ -39,6 +51,7 @@ async function requireAuth(
   const cookieToken = readCookie(request);
 
   if (cookieToken) {
+    assertSameOrigin(request);
     request.user = await app.jwt.verify(cookieToken);
   } else {
     await request.jwtVerify();
@@ -608,27 +621,33 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
       }
 
       const passwordHash = await hashPassword(input.password);
-
-      const r = await pool.query(
-        "INSERT INTO users(company_id,branch_id,email,password_hash,display_name,phone,status) VALUES($1,$2,$3,$4,$5,$6,'active') RETURNING id,email,display_name,phone,status,branch_id,created_at",
-        [
-          user.companyId,
-          input.branchId ?? null,
-          input.email,
-          passwordHash,
-          input.displayName,
-          input.phone ?? null
-        ]
-      );
-
-      await pool.query(
-        "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
-        [r.rows[0].id, role.rows[0].id]
-      );
-
-      await audit(user, request, "company.user.created", "user", r.rows[0].id);
-
-      return reply.code(201).send({ user: r.rows[0] });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const r = await client.query(
+          "INSERT INTO users(company_id,branch_id,email,password_hash,display_name,phone,status) VALUES($1,$2,$3,$4,$5,$6,'active') RETURNING id,email,display_name,phone,status,branch_id,created_at",
+          [
+            user.companyId,
+            input.branchId ?? null,
+            input.email,
+            passwordHash,
+            input.displayName,
+            input.phone ?? null
+          ]
+        );
+        await client.query(
+          "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
+          [r.rows[0].id, role.rows[0].id]
+        );
+        await client.query("COMMIT");
+        await audit(user, request, "company.user.created", "user", r.rows[0].id);
+        return reply.code(201).send({ user: r.rows[0] });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       return reply.code((error as any)?.statusCode ?? 400).send({
         error: {
@@ -731,31 +750,49 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
         });
       }
 
-      values.push(id, user.companyId);
+      const client = await pool.connect();
+      let r;
+      try {
+        await client.query("BEGIN");
 
-      if (input.roleId !== undefined) {
-        await pool.query("DELETE FROM user_roles WHERE user_id=$1", [id]);
-        await pool.query(
-          "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
-          [id, input.roleId]
-        );
-      }
-
-      const r = sets.length
-        ? await pool.query(
-            "UPDATE users SET " +
-              sets.join(",") +
-              ",updated_at=NOW() WHERE id=$" +
-              (values.length - 1) +
-              " AND company_id=$" +
-              values.length +
-              " RETURNING id,email,display_name,phone,status,branch_id,updated_at",
-            values
-          )
-        : await pool.query(
-            "SELECT id,email,display_name,phone,status,branch_id,updated_at FROM users WHERE id=$1 AND company_id=$2",
-            [id, user.companyId]
+        if (input.roleId !== undefined) {
+          await client.query("DELETE FROM user_roles WHERE user_id=$1", [id]);
+          await client.query(
+            "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
+            [id, input.roleId]
           );
+        }
+
+        values.push(id, user.companyId);
+        r = sets.length
+          ? await client.query(
+              "UPDATE users SET " +
+                sets.join(",") +
+                ",updated_at=NOW() WHERE id=$" +
+                (values.length - 1) +
+                " AND company_id=$" +
+                values.length +
+                " RETURNING id,email,display_name,phone,status,branch_id,updated_at",
+              values
+            )
+          : await client.query(
+              "SELECT id,email,display_name,phone,status,branch_id,updated_at FROM users WHERE id=$1 AND company_id=$2",
+              [id, user.companyId]
+            );
+
+        if (r.rowCount !== 1) {
+          await client.query("ROLLBACK");
+          return reply.code(404).send({
+            error: { code: "USER_NOT_FOUND", message: "User not found" }
+          });
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
 
       if (r.rowCount !== 1) {
         return reply.code(404).send({
@@ -835,21 +872,44 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
       requireCompanyAdmin(user);
       const input = roleCreate.parse(request.body);
 
-      const r = await pool.query(
-        "INSERT INTO roles(company_id,name,is_system) VALUES($1,$2,FALSE) RETURNING id,name,is_system",
-        [user.companyId, input.name]
-      );
-
-      for (const permissionId of input.permissionIds) {
-        await pool.query(
-          "INSERT INTO role_permissions(role_id,permission_id) SELECT $1,id FROM permissions WHERE id=$2 ON CONFLICT DO NOTHING",
-          [r.rows[0].id, permissionId]
+      const permissionIds = [...new Set(input.permissionIds)];
+      if (permissionIds.length) {
+        const allowed = await pool.query(
+          "SELECT id FROM permissions WHERE id = ANY($1::uuid[]) AND code LIKE 'company.%'",
+          [permissionIds]
         );
+        if (allowed.rowCount !== permissionIds.length) {
+          return reply.code(400).send({
+            error: {
+              code: "INVALID_PERMISSION_SCOPE",
+              message: "Only Company Setup permissions can be assigned here"
+            }
+          });
+        }
       }
 
-      await audit(user, request, "company.role.created", "role", r.rows[0].id);
-
-      return reply.code(201).send({ role: r.rows[0] });
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const r = await client.query(
+          "INSERT INTO roles(company_id,name,is_system) VALUES($1,$2,FALSE) RETURNING id,name,is_system",
+          [user.companyId, input.name]
+        );
+        for (const permissionId of permissionIds) {
+          await client.query(
+            "INSERT INTO role_permissions(role_id,permission_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+            [r.rows[0].id, permissionId]
+          );
+        }
+        await client.query("COMMIT");
+        await audit(user, request, "company.role.created", "role", r.rows[0].id);
+        return reply.code(201).send({ role: r.rows[0] });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     } catch (error) {
       return reply.code((error as any)?.statusCode ?? 400).send({
         error: {
@@ -893,29 +953,52 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
         });
       }
 
-      if (input.name !== undefined) {
-        await pool.query(
-          "UPDATE roles SET name=$1,updated_at=NOW() WHERE id=$2",
-          [input.name, id]
-        );
-      }
+      const permissionIds = input.permissionIds === undefined
+        ? undefined
+        : [...new Set(input.permissionIds)];
 
-      if (input.permissionIds !== undefined) {
-        await pool.query(
-          "DELETE FROM role_permissions WHERE role_id=$1",
-          [id]
+      if (permissionIds) {
+        const allowed = await pool.query(
+          "SELECT id FROM permissions WHERE id = ANY($1::uuid[]) AND code LIKE 'company.%'",
+          [permissionIds]
         );
-
-        for (const permissionId of input.permissionIds) {
-          await pool.query(
-            "INSERT INTO role_permissions(role_id,permission_id) SELECT $1,id FROM permissions WHERE id=$2 ON CONFLICT DO NOTHING",
-            [id, permissionId]
-          );
+        if (allowed.rowCount !== permissionIds.length) {
+          return reply.code(400).send({
+            error: {
+              code: "INVALID_PERMISSION_SCOPE",
+              message: "Only Company Setup permissions can be assigned here"
+            }
+          });
         }
       }
 
-      await audit(user, request, "company.role.updated", "role", id);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (input.name !== undefined) {
+          await client.query(
+            "UPDATE roles SET name=$1,updated_at=NOW() WHERE id=$2 AND company_id=$3",
+            [input.name, id, user.companyId]
+          );
+        }
+        if (permissionIds) {
+          await client.query("DELETE FROM role_permissions WHERE role_id=$1", [id]);
+          for (const permissionId of permissionIds) {
+            await client.query(
+              "INSERT INTO role_permissions(role_id,permission_id) VALUES($1,$2) ON CONFLICT DO NOTHING",
+              [id, permissionId]
+            );
+          }
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
 
+      await audit(user, request, "company.role.updated", "role", id);
       return { success: true };
     } catch (error) {
       return reply.code((error as any)?.statusCode ?? 400).send({
