@@ -16,11 +16,6 @@ ALTER TABLE companies
   ADD COLUMN IF NOT EXISTS pincode TEXT,
   ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'India';
 
-ALTER TABLE users
-  ADD COLUMN IF NOT EXISTS display_name TEXT,
-  ADD COLUMN IF NOT EXISTS phone TEXT,
-  ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;
-
 CREATE TABLE IF NOT EXISTS branches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -42,6 +37,11 @@ CREATE TABLE IF NOT EXISTS branches (
   updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT branches_company_code_unique UNIQUE (company_id, code)
 );
+
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS display_name TEXT,
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS branch_id UUID REFERENCES branches(id) ON DELETE SET NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_one_head_office_per_company
   ON branches(company_id)
