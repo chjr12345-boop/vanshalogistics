@@ -1,12 +1,13 @@
 import { StrictMode, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import CompanySetup from "./CompanySetup";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
 type User = { id:string; companyId:string; email:string; mfaEnabled:boolean; roles:string[] };
 type Session = { id:string; device_name:string|null; ip_address:string|null; last_seen_at:string };
 
-async function api(path:string, options:RequestInit = {}) {
+export async function api(path:string, options:RequestInit = {}) {
   const headers = new Headers(options.headers);
   if (options.body && !headers.has("content-type")) headers.set("content-type","application/json");
   const response = await fetch(API + path, {...options, credentials:"include", headers});
@@ -51,7 +52,7 @@ function Dashboard({user,onLogout}:{user:User;onLogout:()=>void}) {
     <main className="dashboard"><div className="welcome"><div><div className="eyebrow">AUTHENTICATED</div><h1>Welcome, {user.email}</h1><p className="muted">Your authentication and session controls are active.</p></div><div className="role-badges">{user.roles.map(r=><span key={r}>{r}</span>)}</div></div>
       <div className="grid"><article><h3>Account security</h3><p>MFA status: <b>{user.mfaEnabled?"Enabled":"Not enabled"}</b></p>{!user.mfaEnabled&&!mfaSecret&&<button onClick={setupMfa}>Set up MFA</button>}{mfaSecret&&<div className="mfa-box"><code>{mfaSecret}</code><small>{otpUri}</small><Field label="Authenticator code" value={mfaCode} onChange={setMfaCode} placeholder="000000"/><button onClick={enableMfa}>Enable MFA</button></div>}{message&&<div className="notice">{message}</div>}</article>
       <article><h3>Active sessions</h3><div className="session-list">{sessions.map(s=><div className="session" key={s.id}><div><b>{s.device_name||"Current device"}</b><small>{s.ip_address||"IP unavailable"} · Last active {new Date(s.last_seen_at).toLocaleString()}</small></div><button className="danger" onClick={()=>revoke(s.id)}>Revoke</button></div>)}</div></article></div>
-    </main></div>;
+      <CompanySetup api={api} user={user} />\n    </main></div>;
 }
 
 function App(){const [user,setUser]=useState<User|null>(null);const [checking,setChecking]=useState(true);useEffect(()=>{api("/auth/me").then(r=>setUser(r.user)).catch(()=>setUser(null)).finally(()=>setChecking(false))},[]);if(checking)return <div className="loading">Loading secure workspace…</div>;return user?<Dashboard user={user} onLogout={()=>setUser(null)}/>:<Login onLogin={setUser}/>}
