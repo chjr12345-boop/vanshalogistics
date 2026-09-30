@@ -38,6 +38,19 @@ function readCookie(request: FastifyRequest): string | null {
   return null;
 }
 
+
+function assertSameOrigin(request: FastifyRequest) {
+  const unsafe = !["GET", "HEAD", "OPTIONS"].includes(request.method);
+  const origin = request.headers.origin;
+
+  if (unsafe && origin && origin !== config.CORS_ORIGIN) {
+    throw Object.assign(new Error("Cross-site request blocked"), {
+      statusCode: 403,
+      code: "CSRF_ORIGIN_REJECTED"
+    });
+  }
+}
+
 function setAccessCookie(reply: any, token: string) {
   const secure = config.NODE_ENV === "production" ? "; Secure" : "";
 
@@ -147,6 +160,7 @@ async function requireAuth(
   const cookieToken = readCookie(request);
 
   if (cookieToken) {
+    assertSameOrigin(request);
     request.user = await app.jwt.verify(cookieToken);
   } else {
     await request.jwtVerify();
