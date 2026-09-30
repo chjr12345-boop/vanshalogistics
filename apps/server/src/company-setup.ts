@@ -708,12 +708,18 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
         sets.push("branch_id=$" + values.length);
       }
 
-      if (input.roleId !== undefined) {
-        await pool.query("DELETE FROM user_roles WHERE user_id=$1", [id]);
-        await pool.query(
-          "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
-          [id, input.roleId]
-        );
+      const targetUser = await pool.query(
+        "SELECT id FROM users WHERE id=$1 AND company_id=$2",
+        [id, user.companyId]
+      );
+
+      if (targetUser.rowCount !== 1) {
+        return reply.code(404).send({
+          error: {
+            code: "USER_NOT_FOUND",
+            message: "User not found"
+          }
+        });
       }
 
       if (!sets.length && input.roleId === undefined) {
@@ -727,16 +733,29 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
 
       values.push(id, user.companyId);
 
-      const r = await pool.query(
-        "UPDATE users SET " +
-          sets.join(",") +
-          ",updated_at=NOW() WHERE id=$" +
-          (values.length - 1) +
-          " AND company_id=$" +
-          values.length +
-          " RETURNING id,email,display_name,phone,status,branch_id,updated_at",
-        values
-      );
+      if (input.roleId !== undefined) {
+        await pool.query("DELETE FROM user_roles WHERE user_id=$1", [id]);
+        await pool.query(
+          "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
+          [id, input.roleId]
+        );
+      }
+
+      const r = sets.length
+        ? await pool.query(
+            "UPDATE users SET " +
+              sets.join(",") +
+              ",updated_at=NOW() WHERE id=$" +
+              (values.length - 1) +
+              " AND company_id=$" +
+              values.length +
+              " RETURNING id,email,display_name,phone,status,branch_id,updated_at",
+            values
+          )
+        : await pool.query(
+            "SELECT id,email,display_name,phone,status,branch_id,updated_at FROM users WHERE id=$1 AND company_id=$2",
+            [id, user.companyId]
+          );
 
       if (r.rowCount !== 1) {
         return reply.code(404).send({
