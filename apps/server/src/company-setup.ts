@@ -703,26 +703,20 @@ export async function registerCompanySetupRoutes(app: FastifyInstance) {
         values.push(input.status);
         sets.push("status=$" + values.length);
       }
-      if (input.roleId !== undefined) {
-        values.push(input.roleId);
-        sets.push("(SELECT $"+values.length+"::uuid)");
-      }
       if (input.branchId !== undefined) {
         values.push(input.branchId);
         sets.push("branch_id=$" + values.length);
       }
 
       if (input.roleId !== undefined) {
-        const roleIndex = values.length - (input.branchId !== undefined ? 1 : 0);
         await pool.query("DELETE FROM user_roles WHERE user_id=$1", [id]);
         await pool.query(
           "INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)",
-          [id, values[roleIndex - 1]]
+          [id, input.roleId]
         );
-        sets.splice(sets.findIndex((x) => x.startsWith("(SELECT")), 1);
       }
 
-      if (!sets.length) {
+      if (!sets.length && input.roleId === undefined) {
         return reply.code(400).send({
           error: {
             code: "NO_CHANGES",
