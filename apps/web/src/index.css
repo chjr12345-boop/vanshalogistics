@@ -35,3 +35,25 @@
 @media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.operational-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:800px){.dashboard-title{display:grid}.dashboard-updated{text-align:left}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.operational-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.kpi-grid,.operational-grid{grid-template-columns:1fr}.kpi-card{padding:16px}}
+
+
+.crm-section{margin-bottom:28px}
+.crm-heading{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin:22px 0 18px}
+.crm-heading h2{font-size:30px;margin:8px 0}
+.crm-summary{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.crm-stat{background:#fff;border:1px solid #e5e8ef;border-radius:14px;padding:15px}
+.crm-stat span{display:block;color:#667085;font-size:12px;text-transform:capitalize}
+.crm-stat strong{display:block;font-size:27px;margin-top:7px}
+.crm-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:8px;margin-bottom:14px}
+.crm-tab{background:#fff;color:#344054;border:1px solid #d8deea;padding:9px 13px;white-space:nowrap}
+.crm-tab.active{background:#172033;color:#fff;border-color:#172033}
+.crm-layout{display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:18px}
+.crm-card{background:#fff;border:1px solid #e5e8ef;border-radius:16px;padding:20px}
+.crm-card h3{margin-top:0}
+.crm-card textarea{width:100%;min-height:90px;padding:11px 12px;border:1px solid #d8deea;border-radius:9px;resize:vertical}
+.crm-list{display:grid;gap:9px}
+.crm-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px;background:#f7f8fb;border-radius:10px}
+.crm-row small{display:block;color:#667085;margin-top:4px}
+@media(max-width:1000px){.crm-summary{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:800px){.crm-heading{display:grid}.crm-layout{grid-template-columns:1fr}.crm-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.crm-summary{grid-template-columns:1fr}.crm-card{padding:16px}.crm-row{align-items:flex-start;flex-direction:column}}
