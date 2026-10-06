@@ -1,0 +1,21 @@
+import { useEffect, useState } from "react";
+
+type Props={api:(path:string,options?:RequestInit)=>Promise<any>};
+const tabs=["Leads","Customers","Contacts","Enquiries","Follow-ups","Quotations","Negotiations"];
+const empty={companyName:"",contactName:"",email:"",phone:"",source:"",requirementSummary:""};
+export default function CRMWorkspace({api}:Props){
+  const [tab,setTab]=useState("Leads"),[summary,setSummary]=useState<any>(null),[rows,setRows]=useState<any[]>([]),[error,setError]=useState(""),[form,setForm]=useState<any>(empty);
+  const endpoint:any={Leads:"/crm/leads",Customers:"/crm/customers",Contacts:"/crm/contacts",Enquiries:"/crm/enquiries", "Follow-ups":"/crm/followups",Quotations:"/crm/quotations",Negotiations:"/crm/negotiations"};
+  async function load(){try{const [s,r]=await Promise.all([api("/crm/summary"),api(endpoint[tab])]);setSummary(s);setRows(r[tab.toLowerCase().replace("-","")]||r.leads||r.customers||r.contacts||r.enquiries||r.followups||r.quotations||r.negotiations||[]);setError("")}catch(e){setError(e instanceof Error?e.message:"Unable to load CRM")}}
+  useEffect(()=>{load()},[tab]);
+  function field(k:string,v:string){setForm((x:any)=>({...x,[k]:v}))}
+  async function createLead(e:any){e.preventDefault();try{await api("/crm/leads",{method:"POST",body:JSON.stringify({...form,status:"new",priority:"normal"})});setForm(empty);load()}catch(e){setError(e instanceof Error?e.message:"Lead creation failed")}}
+  return <section className="crm-section">
+    <div className="crm-heading"><div><div className="eyebrow">CUSTOMER RELATIONSHIP MANAGEMENT</div><h2>CRM Workspace</h2><p className="muted">Manage the commercial journey from lead through enquiry, quotation and customer relationship history.</p></div><span className="tag">Tenant secured</span></div>
+    {summary&&<div className="crm-summary">{Object.entries({leads:summary.leads,customers:summary.customers,enquiries:summary.enquiries,pendingFollowups:summary.pendingFollowups,quotations:summary.quotations,negotiations:summary.negotiations}).map(([k,v])=><div className="crm-stat" key={k}><span>{k.replace(/([A-Z])/g," $1")}</span><strong>{String(v)}</strong></div>)}</div>}
+    <div className="crm-tabs">{tabs.map(t=><button key={t} className={tab===t?"crm-tab active":"crm-tab"} onClick={()=>setTab(t)}>{t}</button>)}</div>
+    {error&&<div className="notice">{error}</div>}
+    {tab==="Leads"&&<div className="crm-layout"><form className="crm-card" onSubmit={createLead}><h3>New Lead</h3><label className="field"><span>Company name</span><input required value={form.companyName} onChange={e=>field("companyName",e.target.value)}/></label><label className="field"><span>Contact name</span><input value={form.contactName} onChange={e=>field("contactName",e.target.value)}/></label><label className="field"><span>Email</span><input type="email" value={form.email} onChange={e=>field("email",e.target.value)}/></label><label className="field"><span>Phone</span><input value={form.phone} onChange={e=>field("phone",e.target.value)}/></label><label className="field"><span>Source</span><input placeholder="Referral, website, call..." value={form.source} onChange={e=>field("source",e.target.value)}/></label><label className="field"><span>Requirement</span><textarea value={form.requirementSummary} onChange={e=>field("requirementSummary",e.target.value)}/></label><button>Create lead</button></form><div className="crm-card"><h3>Lead pipeline</h3>{rows.length===0?<p className="muted">No leads yet.</p>:<div className="crm-list">{rows.map(r=><div className="crm-row" key={r.id}><div><b>{r.company_name}</b><small>{r.contact_name||"No contact"} · {r.email||"No email"}</small></div><span className="tag">{r.status}</span></div>)}</div>}</div></div>}
+    {tab!=="Leads"&&<div className="crm-card"><h3>{tab}</h3>{rows.length===0?<p className="muted">No records yet. The CRM API is ready for this workflow.</p>:<div className="crm-list">{rows.map(r=><div className="crm-row" key={r.id}><div><b>{r.legal_name||r.name||r.enquiry_no||r.quotation_no||r.subject||r.summary||r.code||"CRM record"}</b><small>{r.status||r.channel||""}</small></div></div>)}</div>}</div>}
+  </section>
+}
