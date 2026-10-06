@@ -15,3 +15,23 @@
 .tag{font-size:11px;font-weight:800;border-radius:999px;padding:5px 9px;background:#eef2ff;color:#34428b;white-space:nowrap}
 .settings-editor{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;resize:vertical;margin:8px 0 12px}
 @media(max-width:800px){.setup-grid{grid-template-columns:1fr}.setup-fields{grid-template-columns:1fr}.setup-heading{display:grid}}
+
+.dashboard-section{margin-bottom:28px}
+.dashboard-title{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
+.dashboard-title h2{font-size:30px;margin:8px 0}
+.dashboard-updated{font-size:12px;color:#667085;text-align:right}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}
+.kpi-card{background:#fff;border:1px solid #e5e8ef;border-radius:14px;padding:18px;min-width:0}
+.kpi-card span{display:block;color:#667085;font-size:12px;font-weight:700}
+.kpi-card strong{display:block;font-size:30px;margin:10px 0 6px}
+.kpi-card small,.operational-card small{color:#667085;line-height:1.45}
+.dashboard-panel{margin-top:20px;background:#fff;border:1px solid #e5e8ef;border-radius:16px;padding:22px}
+.dashboard-panel h3{margin:0 0 6px}
+.operational-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-top:18px}
+.operational-card{background:#f7f8fb;border-radius:12px;padding:15px}
+.operational-card-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.operational-card strong{display:block;font-size:25px;margin:12px 0 6px}
+.dashboard-loading{padding:22px;background:#fff;border:1px solid #e5e8ef;border-radius:14px;color:#667085}
+@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.operational-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:800px){.dashboard-title{display:grid}.dashboard-updated{text-align:left}.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.operational-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:480px){.kpi-grid,.operational-grid{grid-template-columns:1fr}.kpi-card{padding:16px}}
