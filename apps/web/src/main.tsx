@@ -2,6 +2,7 @@ import { StrictMode, useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import CompanySetup from "./CompanySetup";
+import DashboardOverview from "./DashboardOverview";
 
 const API = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
 type User = { id:string; companyId:string; email:string; mfaEnabled:boolean; roles:string[] };
@@ -49,7 +50,8 @@ function Dashboard({user,onLogout}:{user:User;onLogout:()=>void}) {
   async function setupMfa(){try{const r=await api("/auth/mfa/setup",{method:"POST"});setMfaSecret(r.secret);setOtpUri(r.otpauthUri);setMessage("Scan the secret with your authenticator, then enter the current code to enable MFA.")}catch(e){setMessage(e instanceof Error?e.message:"MFA setup failed")}}
   async function enableMfa(){try{await api("/auth/mfa/enable",{method:"POST",body:JSON.stringify({code:mfaCode})});setMessage("MFA enabled successfully.");setMfaSecret("");setMfaCode("")}catch(e){setMessage(e instanceof Error?e.message:"MFA enable failed")}}
   return <div className="app-shell"><header><div><strong>Vansha Logistic Hub</strong><span className="status-dot"/> Secure workspace</div><button className="outline" onClick={logout}>Sign out</button></header>
-    <main className="dashboard"><div className="welcome"><div><div className="eyebrow">AUTHENTICATED</div><h1>Welcome, {user.email}</h1><p className="muted">Your authentication and session controls are active.</p></div><div className="role-badges">{user.roles.map(r=><span key={r}>{r}</span>)}</div></div>
+    <main className="dashboard"><DashboardOverview api={api} />
+      <div className="welcome"><div><div className="eyebrow">AUTHENTICATED</div><h1>Welcome, {user.email}</h1><p className="muted">Your authentication and session controls are active.</p></div><div className="role-badges">{user.roles.map(r=><span key={r}>{r}</span>)}</div></div>
       <div className="grid"><article><h3>Account security</h3><p>MFA status: <b>{user.mfaEnabled?"Enabled":"Not enabled"}</b></p>{!user.mfaEnabled&&!mfaSecret&&<button onClick={setupMfa}>Set up MFA</button>}{mfaSecret&&<div className="mfa-box"><code>{mfaSecret}</code><small>{otpUri}</small><Field label="Authenticator code" value={mfaCode} onChange={setMfaCode} placeholder="000000"/><button onClick={enableMfa}>Enable MFA</button></div>}{message&&<div className="notice">{message}</div>}</article>
       <article><h3>Active sessions</h3><div className="session-list">{sessions.map(s=><div className="session" key={s.id}><div><b>{s.device_name||"Current device"}</b><small>{s.ip_address||"IP unavailable"} · Last active {new Date(s.last_seen_at).toLocaleString()}</small></div><button className="danger" onClick={()=>revoke(s.id)}>Revoke</button></div>)}</div></article></div>
       <CompanySetup api={api} user={user} />\n    </main></div>;
